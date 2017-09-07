@@ -170,13 +170,10 @@ for filename in os.listdir(folder):
 
         file_root = filename[:-4]
 
-        # To only get the first system
-        if int(file_root[-2:]) > 15: break
-
-
         # Load data
         dtype = [("MJD","f8"), ("SRC_CNTS","f8"), ("BKG_CNTS","f8"), ("NET_CNTS","f8"), ("ERR_LOW","f8"),("ERR_HIG","f8")]
         data = np.genfromtxt(folder+filename, dtype=dtype)
+        data = data[~np.isnan(data['SRC_CNTS'])]
 
 
         # Initialize walkers
