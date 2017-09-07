@@ -165,8 +165,7 @@ folder = "../data/"
 nwalkers = 32
 
 
-for file in os.listdir(folder):
-    filename = os.fsdecode(file)
+for filename in os.listdir(folder):
     if filename.startswith("src_") and filename.endswith(".dat"):
 
         file_root = filename[:-4]
