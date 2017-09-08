@@ -31,7 +31,7 @@ def neg_ln_likelihood(x, data, kernel):
 
 def ln_likelihood(x, data, kernel):
 
-    A, t0, delta_t = x
+    A_1, t0_1, delta_t_1, A_2, t0_2, delta_t_2 = x
 
     ln_likelihood = 0.0
 
@@ -42,28 +42,34 @@ def ln_likelihood(x, data, kernel):
         counts = d['SRC_CNTS']
 
         # Contribution to counts from the source
-        lambda_source = kernel(d['MJD'], A, t0, delta_t)
+        lambda_source_1 = kernel(d['MJD'], A_1, t0_1, delta_t_1)
+        lambda_source_2 = kernel(d['MJD'], A_2, t0_2, delta_t_2)
 
         # Contribution to counts from the background
         lambda_background = d['BKG_CNTS']
 
         # Calculate the natural log of the poisson probability
 #         ln_likelihood += counts * np.log(lambda_source+lambda_background) - len(data) * (lambda_source+lambda_background)
-        ln_likelihood += np.log(poisson(lambda_source+lambda_background, counts))
+        ln_likelihood += np.log(poisson(lambda_source_1+lambda_source_2+lambda_background, counts))
 
     return ln_likelihood
 
 def ln_posterior(x, data, kernel):
 
-    A, t0, delta_t = x
+    A_1, t0_1, delta_t_1, A_2, t0_2, delta_t_2 = x
 
     # Prior
-    if A < 0.01 or A > 100.0: return -np.inf
-    if t0 < np.min(data['MJD']) or t0 > np.max(data['MJD']): return -np.inf
+    if A_1 < 0.01 or A_1 > 100.0: return -np.inf
+    if A_2 < 0.01 or A_2 > 100.0: return -np.inf
+    if t0_1 < np.min(data['MJD']) or t0_1 > np.max(data['MJD']): return -np.inf
+    if t0_2 < np.min(data['MJD']) or t0_2 > np.max(data['MJD']): return -np.inf
+    if t0_1 > t0_2: return -np.inf
     if kernel == 'epanechnikov' or kernel == 'exponential':
-        if delta_t < 2.0 or delta_t > 10.0: return -np.inf
+        if delta_t_1 < 2.0 or delta_t_1 > 10.0: return -np.inf
+        if delta_t_2 < 2.0 or delta_t_2 > 10.0: return -np.inf
     else:
-        if delta_t < 2.0 or delta_t > 5.0: return -np.inf
+        if delta_t_1 < 2.0 or delta_t_1 > 5.0: return -np.inf
+        if delta_t_2 < 2.0 or delta_t_2 > 5.0: return -np.inf
 
     # Likelihood
     ll = ln_likelihood(x, data, kernel)
@@ -73,18 +79,18 @@ def ln_posterior(x, data, kernel):
 def run_emcee(data, nwalkers, p0):
 
     print("Running Gaussian model...")
-    sampler_gaussian = emcee.EnsembleSampler(nwalkers=nwalkers, dim=3, lnpostfn=ln_posterior, args=[data, gaussian])
-    pos,prob,state = sampler_gaussian.run_mcmc(p0, N=1200)
+    sampler_gaussian = emcee.EnsembleSampler(nwalkers=nwalkers, dim=6, lnpostfn=ln_posterior, args=[data, gaussian])
+    pos,prob,state = sampler_gaussian.run_mcmc(p0, N=2500)
     print("... finished Gaussian model.")
 
     print("Running Epanechnikov model...")
-    sampler_epan = emcee.EnsembleSampler(nwalkers=nwalkers, dim=3, lnpostfn=ln_posterior, args=[data, epanechnikov])
-    pos,prob,state = sampler_epan.run_mcmc(p0, N=1200)
+    sampler_epan = emcee.EnsembleSampler(nwalkers=nwalkers, dim=6, lnpostfn=ln_posterior, args=[data, epanechnikov])
+    pos,prob,state = sampler_epan.run_mcmc(p0, N=2500)
     print("... finished Epanechnikov model.")
 
     print("Running exponential model...")
-    sampler_exp = emcee.EnsembleSampler(nwalkers=nwalkers, dim=3, lnpostfn=ln_posterior, args=[data, exponential])
-    pos,prob,state = sampler_exp.run_mcmc(p0, N=1200)
+    sampler_exp = emcee.EnsembleSampler(nwalkers=nwalkers, dim=6, lnpostfn=ln_posterior, args=[data, exponential])
+    pos,prob,state = sampler_exp.run_mcmc(p0, N=2500)
     print("... finished exponential model.")
 
     return sampler_gaussian, sampler_epan, sampler_exp
@@ -92,7 +98,7 @@ def run_emcee(data, nwalkers, p0):
 
 def plot_walkers(filename, sampler_gaussian, sampler_epan, sampler_exp):
 
-    fig, ax = plt.subplots(3, 3, figsize=(15,6))
+    fig, ax = plt.subplots(6, 3, figsize=(15,12))
 
     # Gaussian Model
     n_chains, length, n_var = sampler_gaussian.chain.shape
@@ -130,21 +136,21 @@ def plot_light_curve(filename, data, flat_chain_gaussian_good, flat_chain_epan_g
 
 
     # Gaussian
-    for idx in np.random.randint(len(flat_chain_gaussian_good.T[0]), size=100):
-        A, t0, delta_t = flat_chain_gaussian_good[idx]
-        ax[0].plot(times, gaussian(times, A, t0, delta_t), color='k', alpha=0.05)
+    for idx in np.random.randint(len(flat_chain_gaussian_good.T[0]), size=200):
+        A_1, t0_1, delta_t_1, A_2, t0_2, delta_t_2 = flat_chain_gaussian_good[idx]
+        ax[0].plot(times, gaussian(times, A_1, t0_1, delta_t_1)+gaussian(times, A_2, t0_2, delta_t_2), color='k', alpha=0.05, linewidth=1.0)
     ax[0].set_title("Gaussian Model")
 
     # Epanechnikov
-    for idx in np.random.randint(len(flat_chain_epan_good.T[0]), size=100):
-        A, t0, delta_t = flat_chain_epan_good[idx]
-        ax[1].plot(times, epanechnikov(times, A, t0, delta_t), color='k', alpha=0.05)
+    for idx in np.random.randint(len(flat_chain_epan_good.T[0]), size=200):
+        A_1, t0_1, delta_t_1, A_2, t0_2, delta_t_2 = flat_chain_epan_good[idx]
+        ax[1].plot(times, epanechnikov(times, A_1, t0_1, delta_t_1)+epanechnikov(times, A_2, t0_2, delta_t_2), color='k', alpha=0.05, linewidth=1.0)
     ax[1].set_title("Epanechnikov Model")
 
     # Exponential
-    for idx in np.random.randint(len(flat_chain_exp_good.T[0]), size=100):
-        A, t0, delta_t = flat_chain_exp_good[idx]
-        ax[2].plot(times, exponential(times, A, t0, delta_t), color='k', alpha=0.05)
+    for idx in np.random.randint(len(flat_chain_exp_good.T[0]), size=200):
+        A_1, t0_1, delta_t_1, A_2, t0_2, delta_t_2 = flat_chain_exp_good[idx]
+        ax[2].plot(times, exponential(times, A_1, t0_1, delta_t_1)+exponential(times, A_2, t0_2, delta_t_2), color='k', alpha=0.05, linewidth=1.0)
     ax[2].set_title("Exponential Model")
 
 
@@ -175,53 +181,56 @@ for filename in os.listdir(folder):
 
         file_root = filename[:-4]
 
-        print(file_root)
+        if file_root != 'src_034' and \
+                file_root != 'src_064' and \
+                file_root != 'src_163' and \
+                file_root != 'src_229': continue
 
-        # if file_root != 'src_213': continue
+        print(file_root)
 
         # Load data
         dtype = [("MJD","f8"), ("SRC_CNTS","f8"), ("BKG_CNTS","f8"), ("NET_CNTS","f8"), ("ERR_LOW","f8"),("ERR_HIGH","f8")]
         data = np.genfromtxt(folder+filename, dtype=dtype)
         data = data[~np.isnan(data['SRC_CNTS'])]
 
-        # Remove sources with more than 200 counts
-        if np.any(data['SRC_CNTS'] > 200.0): continue
-
         # Initialize walkers
-        A_set = np.random.normal(loc = 10.0, scale=0.1, size=nwalkers)
-        t0_set = np.random.normal(loc = 0.5 * (np.max(data['MJD']) - np.min(data['MJD'])) + np.min(data['MJD']), scale=1.0, size=nwalkers)
-        delta_t_set = np.random.normal(loc = 0.1*(np.max(data['MJD']) - np.min(data['MJD'])), scale=0.1, size=nwalkers)
-        p0 = np.array([A_set, t0_set, delta_t_set]).T
+        A_set_1 = np.random.normal(loc = 10.0, scale=0.1, size=nwalkers)
+        A_set_2 = np.random.normal(loc = 10.0, scale=0.1, size=nwalkers)
+        t0_set_1 = np.random.normal(loc = 0.4 * (np.max(data['MJD']) - np.min(data['MJD'])) + np.min(data['MJD']), scale=1.0, size=nwalkers)
+        t0_set_2 = np.random.normal(loc = 0.6 * (np.max(data['MJD']) - np.min(data['MJD'])) + np.min(data['MJD']), scale=1.0, size=nwalkers)
+        delta_t_set_1 = np.random.normal(loc = 0.1*(np.max(data['MJD']) - np.min(data['MJD'])), scale=0.1, size=nwalkers)
+        delta_t_set_2 = np.random.normal(loc = 0.1*(np.max(data['MJD']) - np.min(data['MJD'])), scale=0.1, size=nwalkers)
+        p0 = np.array([A_set_1, t0_set_1, delta_t_set_1, A_set_2, t0_set_2, delta_t_set_2]).T
 
         # Run emcee
         sampler_gaussian, sampler_epan, sampler_exp = run_emcee(data, nwalkers, p0)
 
         # Create plot of walker evolution
-        plot_walkers("../figures/"+file_root+"_chains.jpg", sampler_gaussian, sampler_epan, sampler_exp)
+        plot_walkers("../figures/"+file_root+"_chains_2outburst.jpg", sampler_gaussian, sampler_epan, sampler_exp)
 
         # Remove burn-in
-        chain_gaussian_good = sampler_gaussian.chain[:,200:,:]
+        chain_gaussian_good = sampler_gaussian.chain[:,500:,:]
         n_chains, length, n_var = chain_gaussian_good.shape
         flat_chain_gaussian_good = chain_gaussian_good.reshape((n_chains*length, n_var))
 
-        chain_epan_good = sampler_epan.chain[:,200:,:]
+        chain_epan_good = sampler_epan.chain[:,500:,:]
         n_chains, length, n_var = chain_epan_good.shape
         flat_chain_epan_good = chain_epan_good.reshape((n_chains*length, n_var))
 
-        chain_exp_good = sampler_exp.chain[:,200:,:]
+        chain_exp_good = sampler_exp.chain[:,500:,:]
         n_chains, length, n_var = chain_exp_good.shape
         flat_chain_exp_good = chain_exp_good.reshape((n_chains*length, n_var))
 
         # Create corner plots
         corner.corner(flat_chain_gaussian_good)
         plt.tight_layout()
-        plt.savefig("../figures/"+file_root+"_gaussian_corner.pdf")
+        plt.savefig("../figures/"+file_root+"_gaussian_corner_2outburst.pdf")
         corner.corner(flat_chain_epan_good)
         plt.tight_layout()
-        plt.savefig("../figures/"+file_root+"_epanechnikov_corner.pdf")
+        plt.savefig("../figures/"+file_root+"_epanechnikov_corner_2outburst.pdf")
         corner.corner(flat_chain_exp_good)
         plt.tight_layout()
-        plt.savefig("../figures/"+file_root+"_exponential_corner.pdf")
+        plt.savefig("../figures/"+file_root+"_exponential_corner_2outburst.pdf")
 
         # Plot posterior samples
-        plot_light_curve("../figures/"+file_root+"_light_curve.pdf", data, flat_chain_gaussian_good, flat_chain_epan_good, flat_chain_exp_good)
+        plot_light_curve("../figures/"+file_root+"_light_curve_2outburst.pdf", data, flat_chain_gaussian_good, flat_chain_epan_good, flat_chain_exp_good)
